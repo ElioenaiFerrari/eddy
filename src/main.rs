@@ -1,5 +1,3 @@
-use std::{borrow::BorrowMut, ops::DerefMut};
-
 use bevy::prelude::*;
 
 // Character Components
@@ -21,7 +19,6 @@ struct CharacterBundle {
     level: Level,
     name: Username,
     health: Health,
-    sprite: SpriteBundle,
 }
 
 impl Default for CharacterBundle {
@@ -31,10 +28,6 @@ impl Default for CharacterBundle {
             level: Level(1),
             name: Username("Player".to_string()),
             health: Health(100),
-            sprite: SpriteBundle {
-                transform: Transform::from_scale(Vec3::new(1.0, 1.0, 1.0)), // Uniform scale
-                ..default()
-            },
         }
     }
 }
@@ -70,42 +63,58 @@ impl Default for GameBundle {
 #[derive(Default, Component)]
 struct Player;
 
+#[derive(Component)]
+struct AnimationIndices {
+    first: usize,
+    last: usize,
+}
+
 #[derive(Default, Component)]
 struct Enemy;
 
-fn setup(mut commands: Commands, assets_server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    assets_server: Res<AssetServer>,
+    mut textures: ResMut<Assets<Image>>,
+    mut layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
     commands.spawn(GameBundle::default());
-
     commands.spawn(Camera2dBundle::default());
+
+    let texture_handle: Handle<Image> = assets_server.load("sprite/idle_3.png");
+    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::new(40, 120), 11, 1, None, None);
+    let texture_atlas_handler = layouts.add(texture_atlas);
+
+    let animation_indices = AnimationIndices { first: 1, last: 6 };
+
     commands.spawn((
-        CharacterBundle {
-            sprite: SpriteBundle {
-                texture: assets_server.load("sprite/player.png"),
-                transform: Transform::from_xyz(-30.0, 0.0, 0.0)
-                    .with_scale(Vec3::new(0.2, 0.2, 1.0)),
+        CharacterBundle::default(),
+        Player,
+        SpriteBundle {
+            texture: texture_handle,
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(200., 256.)),
                 ..default()
             },
             ..default()
         },
-        Player,
+        TextureAtlas {
+            index: animation_indices.first,
+            layout: texture_atlas_handler,
+        },
+        animation_indices,
     ));
-
     commands.spawn((
         CharacterBundle {
             name: Username("Goblin".to_string()),
-            sprite: SpriteBundle {
-                texture: assets_server.load("sprite/goblin.png"),
-                transform: Transform::from_xyz(30.0, 0.0, 0.0).with_scale(Vec3::new(0.2, 0.2, 1.0)),
-                ..default()
-            },
             ..default()
         },
         Enemy,
+        SpriteBundle::default(),
     ));
 
     commands.spawn(SpriteBundle {
         texture: assets_server.load("sprite/background.png"),
-        transform: Transform::from_scale(Vec3::new(1.0, 1.5, 0.0)),
         ..default()
     });
 
@@ -145,7 +154,15 @@ fn player_loop(
     mut query_game: Query<(&mut Turn, &Gravity)>,
     mut param_set: ParamSet<(
         Query<&mut Health, With<Enemy>>,
-        Query<(&mut Xp, &mut Transform), With<Player>>,
+        Query<
+            (
+                &mut Xp,
+                &mut Transform,
+                &mut AnimationIndices,
+                &mut TextureAtlas,
+            ),
+            With<Player>,
+        >,
     )>,
     time: Res<Time>,
 ) {
@@ -164,7 +181,7 @@ fn player_loop(
             }
 
             KeyCode::KeyW => {
-                for (_, mut transform) in param_set.p1().iter_mut() {
+                for (_, mut transform, _, _) in param_set.p1().iter_mut() {
                     transform.translation.y += gravity.0 * 10.0;
                     println!("Player moved up! {}", transform.translation.y);
                 }
@@ -176,14 +193,16 @@ fn player_loop(
     for key in keys.get_pressed() {
         match key {
             KeyCode::KeyA => {
-                for (_, mut transform) in param_set.p1().iter_mut() {
+                for (_, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut() {
+                    atlas.index = animation_indices.last;
                     transform.translation.x -= 8.0;
+                    // Virar personagem para esquerda
                     println!("Player moved left! {}", transform.translation.x);
                 }
             }
 
             KeyCode::KeyD => {
-                for (_, mut transform) in param_set.p1().iter_mut() {
+                for (_, mut transform, _, _) in param_set.p1().iter_mut() {
                     transform.translation.x += 8.0;
                     println!("Player moved right! {}", transform.translation.x);
                 }
@@ -239,7 +258,7 @@ fn is_player_in_air(query_player: Query<&Transform, With<Player>>) -> bool {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest())) // prevents blurry sprites
         .add_systems(Startup, setup)
         .add_systems(
             Update,
