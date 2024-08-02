@@ -13,12 +13,16 @@ struct Username(String);
 #[derive(Default, Debug, Component)]
 struct Health(u16);
 
+#[derive(Default, Debug, Component)]
+struct Jumping(bool);
+
 #[derive(Debug, Bundle)]
 struct CharacterBundle {
     xp: Xp,
     level: Level,
     name: Username,
     health: Health,
+    jumping: Jumping,
 }
 
 impl Default for CharacterBundle {
@@ -28,34 +32,37 @@ impl Default for CharacterBundle {
             level: Level(1),
             name: Username("Player".to_string()),
             health: Health(100),
+            jumping: Jumping(false),
         }
     }
 }
 
-// Game Components
-#[derive(Debug, Component)]
-enum Turn {
-    Player,
-    Enemy,
-}
+#[derive(Debug, Resource)]
+struct GravityTimer(Timer);
 
 #[derive(Debug, Resource)]
-struct Clock(Timer);
+struct JumpTimer(Timer);
+
+#[derive(Debug, Resource)]
+struct AccelerationTimer(Timer);
 
 #[derive(Debug, Component)]
 struct Gravity(f32);
 
+#[derive(Debug, Component)]
+struct Acceleration(Vec2);
+
 #[derive(Debug, Bundle)]
 struct GameBundle {
-    turn: Turn,
     gravity: Gravity,
+    acceleration: Acceleration,
 }
 
 impl Default for GameBundle {
     fn default() -> Self {
         GameBundle {
-            turn: Turn::Player,
             gravity: Gravity(9.8),
+            acceleration: Acceleration(Vec2::new(1., 1.)),
         }
     }
 }
@@ -65,8 +72,11 @@ struct Player;
 
 #[derive(Component)]
 struct AnimationIndices {
-    first: usize,
-    last: usize,
+    walk: usize,
+    run: usize,
+    idle: usize,
+    jump: usize,
+    attack: usize,
 }
 
 #[derive(Default, Component)]
@@ -75,17 +85,23 @@ struct Enemy;
 fn setup(
     mut commands: Commands,
     assets_server: Res<AssetServer>,
-    mut textures: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     commands.spawn(GameBundle::default());
     commands.spawn(Camera2dBundle::default());
 
     let texture_handle: Handle<Image> = assets_server.load("sprite/idle_3.png");
-    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::new(40, 120), 11, 1, None, None);
+    let texture_atlas =
+        TextureAtlasLayout::from_grid(UVec2::new(80, 100), 7, 1, None, Some(UVec2::new(84, 30)));
     let texture_atlas_handler = layouts.add(texture_atlas);
 
-    let animation_indices = AnimationIndices { first: 1, last: 6 };
+    let animation_indices = AnimationIndices {
+        idle: 1,
+        walk: 1,
+        run: 2,
+        jump: 3,
+        attack: 4,
+    };
 
     commands.spawn((
         CharacterBundle::default(),
@@ -93,13 +109,13 @@ fn setup(
         SpriteBundle {
             texture: texture_handle,
             sprite: Sprite {
-                custom_size: Some(Vec2::new(200., 256.)),
+                custom_size: Some(Vec2::new(160., 200.)),
                 ..default()
             },
             ..default()
         },
         TextureAtlas {
-            index: animation_indices.first,
+            index: animation_indices.idle,
             layout: texture_atlas_handler,
         },
         animation_indices,
@@ -118,25 +134,15 @@ fn setup(
         ..default()
     });
 
-    commands.insert_resource(Clock(Timer::from_seconds(1.0, TimerMode::Repeating)));
-}
-
-fn is_player_turn(query_game: Query<&Turn>) -> bool {
-    let turn = query_game.single();
-
-    match turn {
-        Turn::Player => true,
-        Turn::Enemy => false,
-    }
-}
-
-fn is_enemy_turn(query_game: Query<&Turn>) -> bool {
-    let turn = query_game.single();
-
-    match turn {
-        Turn::Player => false,
-        Turn::Enemy => true,
-    }
+    commands.insert_resource(GravityTimer(Timer::from_seconds(
+        0.01,
+        TimerMode::Repeating,
+    )));
+    commands.insert_resource(JumpTimer(Timer::from_seconds(0.001, TimerMode::Repeating)));
+    commands.insert_resource(AccelerationTimer(Timer::from_seconds(
+        30.0,
+        TimerMode::Repeating,
+    )));
 }
 
 fn is_not_ended(
@@ -149,14 +155,15 @@ fn is_not_ended(
     player_health.0 > 0 && enemy_health.0 > 0
 }
 
-fn player_loop(
+fn player_move(
     keys: Res<ButtonInput<KeyCode>>,
-    mut query_game: Query<(&mut Turn, &Gravity)>,
+    query_game: Query<&Acceleration>,
     mut param_set: ParamSet<(
         Query<&mut Health, With<Enemy>>,
         Query<
             (
                 &mut Xp,
+                &mut Jumping,
                 &mut Transform,
                 &mut AnimationIndices,
                 &mut TextureAtlas,
@@ -164,10 +171,8 @@ fn player_loop(
             With<Player>,
         >,
     )>,
-    time: Res<Time>,
 ) {
-    let (mut turn, gravity) = query_game.single_mut();
-
+    let acceleration = query_game.single();
     for key in keys.get_just_pressed() {
         match key {
             KeyCode::KeyE => {
@@ -176,14 +181,13 @@ fn player_loop(
 
                     println!("Player attacked!");
                 }
-
-                *turn = Turn::Enemy;
             }
 
             KeyCode::KeyW => {
-                for (_, mut transform, _, _) in param_set.p1().iter_mut() {
-                    transform.translation.y += gravity.0 * 10.0;
-                    println!("Player moved up! {}", transform.translation.y);
+                for (_, mut jumping, _, _, _) in param_set.p1().iter_mut() {
+                    if !jumping.0 {
+                        jumping.0 = true;
+                    }
                 }
             }
             _ => {}
@@ -193,17 +197,22 @@ fn player_loop(
     for key in keys.get_pressed() {
         match key {
             KeyCode::KeyA => {
-                for (_, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut() {
-                    atlas.index = animation_indices.last;
-                    transform.translation.x -= 8.0;
+                for (_, _, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut()
+                {
+                    atlas.index = animation_indices.walk;
+                    transform.translation.x -= 10. * acceleration.0.x;
+                    transform.rotation = Quat::from_rotation_y(3.14);
                     // Virar personagem para esquerda
                     println!("Player moved left! {}", transform.translation.x);
                 }
             }
 
             KeyCode::KeyD => {
-                for (_, mut transform, _, _) in param_set.p1().iter_mut() {
-                    transform.translation.x += 8.0;
+                for (_, _, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut()
+                {
+                    atlas.index = animation_indices.walk;
+                    transform.translation.x += 10. * acceleration.0.x;
+                    transform.rotation = Quat::from_rotation_y(0.);
                     println!("Player moved right! {}", transform.translation.x);
                 }
             }
@@ -214,46 +223,70 @@ fn player_loop(
 }
 
 fn player_jump(
-    mut clock: ResMut<Clock>,
+    mut jump_timer: ResMut<JumpTimer>,
     mut query_player: Query<&mut Transform, With<Player>>,
     time: Res<Time>,
     query_game: Query<&Gravity>,
 ) {
-    clock.0.tick(time.delta());
-    let mut transform = query_player.single_mut();
-    let gravity = query_game.single();
+    if jump_timer.0.tick(time.delta()).just_finished() {
+        let mut transform = query_player.single_mut();
+        let gravity = query_game.single();
 
-    transform.translation.y += gravity.0 * time.delta_seconds() * 30.0;
+        transform.translation.y += gravity.0 * 30.;
+    }
 }
 
 fn player_jump_back(
-    mut query_player: Query<&mut Transform, With<Player>>,
+    mut query_player: Query<(&mut Jumping, &mut Transform), With<Player>>,
     query_game: Query<&Gravity>,
     time: Res<Time>,
-    mut clock: ResMut<Clock>,
+    mut gravity_timer: ResMut<GravityTimer>,
 ) {
-    clock.0.tick(time.delta());
-    let mut transform = query_player.single_mut();
+    let (mut jumping, mut transform) = query_player.single_mut();
     let gravity = query_game.single();
+    if gravity_timer.0.tick(time.delta()).just_finished() {
+        transform.translation.y -= gravity.0;
 
-    transform.translation.y -= gravity.0;
+        if transform.translation.y <= 0. {
+            jumping.0 = false;
+            transform.translation.y = 0.;
+        }
+    }
 }
 
-fn enemy_loop(query_enemy: Query<(&Xp, &Health), With<Enemy>>, mut query_game: Query<&mut Turn>) {
+fn enemy_loop(query_enemy: Query<(&Xp, &Health), With<Enemy>>) {
     let (xp, health) = query_enemy.single();
 
-    println!("Enemy XP: {:#?}", xp);
-    println!("Enemy Health: {:#?}", health);
+    // println!("Enemy XP: {:#?}", xp);
+    // println!("Enemy Health: {:#?}", health);
 
-    let mut turn = query_game.single_mut();
-    println!("Enemy attacked!");
-    *turn = Turn::Player;
+    // println!("Enemy attacked!");
 }
 
-fn is_player_in_air(query_player: Query<&Transform, With<Player>>) -> bool {
+fn is_player_jumping(query_player: Query<&Jumping, With<Player>>) -> bool {
+    let jumping = query_player.single();
+
+    jumping.0
+}
+
+fn is_player_in_floor(query_player: Query<&Transform, With<Player>>) -> bool {
     let transform = query_player.single();
 
-    transform.translation.y > 0.0
+    transform.translation.y == 0.0
+}
+
+fn game_acceleration(
+    mut acceleration_timer: ResMut<AccelerationTimer>,
+    time: Res<Time>,
+    mut query_game: Query<&mut Acceleration>,
+) {
+    if acceleration_timer.0.tick(time.delta()).just_finished() {
+        let mut acceleration = query_game.single_mut();
+
+        acceleration.0 = Vec2::new(acceleration.0.x + 1., acceleration.0.y + 1.);
+
+        println!("Game acceleration: {:#?}", acceleration.0);
+    }
 }
 
 fn main() {
@@ -263,10 +296,14 @@ fn main() {
         .add_systems(
             Update,
             (
-                player_loop.run_if(is_player_turn),
-                player_jump_back.run_if(is_player_in_air),
+                game_acceleration.run_if(is_not_ended),
+                player_move,
+                player_jump_back.run_if(is_player_jumping),
+                player_jump
+                    .run_if(is_player_in_floor)
+                    .run_if(is_player_jumping),
                 // player_jump.run_if(is_player_in_air),
-                enemy_loop.run_if(is_enemy_turn),
+                enemy_loop,
             )
                 .run_if(is_not_ended),
         )
