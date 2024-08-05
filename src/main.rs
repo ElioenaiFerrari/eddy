@@ -13,6 +13,9 @@ struct Level(u32);
 #[derive(Default, Debug, Component)]
 struct Username(String);
 
+#[derive(Debug, Component)]
+struct HealthPotions(u8);
+
 #[derive(Default, Debug, Component)]
 struct Health(u16);
 
@@ -26,6 +29,7 @@ struct CharacterBundle {
     name: Username,
     health: Health,
     jumping: Jumping,
+    health_potions: HealthPotions,
 }
 
 impl Default for CharacterBundle {
@@ -36,6 +40,7 @@ impl Default for CharacterBundle {
             name: Username("Player".to_string()),
             health: Health(100),
             jumping: Jumping(false),
+            health_potions: HealthPotions(2),
         }
     }
 }
@@ -103,10 +108,10 @@ fn setup(
 
     let animation_indices = EddyAnimationIndices {
         idle: vec![0, 5],
-        drunk: vec![7, 11],
+        drunk: vec![16, 26],
         walk: vec![33, 39],
-        run: vec![17, 23],
-        jump: vec![50, 80],
+        run: vec![50, 55],
+        jump: vec![55, 60],
         attack: vec![30, 36],
     };
 
@@ -199,7 +204,7 @@ fn idle_animation(
 
 fn player_move(
     keys: Res<ButtonInput<KeyCode>>,
-    query_game: Query<&Acceleration>,
+    mut query_game: Query<&mut Acceleration>,
     mut animation_timer: ResMut<AnimationTimer>,
     time: Res<Time>,
     mut query_player: Query<
@@ -209,65 +214,95 @@ fn player_move(
             &mut Transform,
             &mut EddyAnimationIndices,
             &mut TextureAtlas,
+            &mut HealthPotions,
         ),
         With<Player>,
     >,
 ) {
-    let acceleration = query_game.single();
+    let mut acceleration = query_game.single_mut();
+    let is_running = keys.pressed(KeyCode::ShiftLeft);
+    if is_running {
+        acceleration.0 = Vec2::new(1.5, 1.5);
+    } else {
+        acceleration.0 = Vec2::new(0.5, 0.5);
+    }
+
     for key in keys.get_just_pressed() {
         match key {
-            KeyCode::KeyE => {
-                for (mut health, _, _, animation_indices, mut atlas) in query_player.iter_mut() {
-                    println!("Player drank!");
-                    health.0 += 10;
-
-                    let first_drunk = animation_indices.drunk[0];
-                    let last_drunk = animation_indices.drunk[1];
-
-                    if animation_timer.0.tick(time.delta()).just_finished() {
-                        atlas.index = if atlas.index == last_drunk {
-                            first_drunk
-                        } else {
-                            atlas.index + 1
-                        };
-                    }
-
-                    println!("Player attacked!");
-                }
-            }
-
             KeyCode::KeyW => {
-                for (_, mut jumping, _, _, _) in query_player.iter_mut() {
+                for (_, mut jumping, _, _, _, _) in query_player.iter_mut() {
                     if !jumping.0 {
                         jumping.0 = true;
                     }
                 }
             }
+
             _ => {}
         }
     }
 
     for key in keys.get_pressed() {
         match key {
+            KeyCode::KeyE => {
+                for (mut health, _, _, animation_indices, mut atlas, mut health_potions) in
+                    query_player.iter_mut()
+                {
+                    if health_potions.0 > 0 {
+                        let first_drunk = animation_indices.drunk[0];
+                        let last_drunk = animation_indices.drunk[1];
+
+                        if atlas.index < first_drunk || atlas.index > last_drunk {
+                            atlas.index = first_drunk;
+                        }
+
+                        if animation_timer.0.tick(time.delta()).just_finished() {
+                            atlas.index = if atlas.index == last_drunk {
+                                health.0 += 10;
+                                health_potions.0 -= 1;
+                                first_drunk
+                            } else {
+                                atlas.index + 1
+                            };
+                        }
+                    }
+                }
+            }
+
             KeyCode::KeyA => {
-                for (_, jumping, mut transform, animation_indices, mut atlas) in
+                for (_, jumping, mut transform, animation_indices, mut atlas, _) in
                     query_player.iter_mut()
                 {
                     transform.rotation = Quat::from_rotation_y(3.14);
 
                     if !jumping.0 {
-                        let first_walk = animation_indices.walk[0];
-                        let last_walk = animation_indices.walk[1];
-                        if atlas.index < first_walk || atlas.index > last_walk {
-                            atlas.index = first_walk;
-                        }
+                        if is_running {
+                            let first_run = animation_indices.run[0];
+                            let last_run = animation_indices.run[1];
+                            if atlas.index < first_run || atlas.index > last_run {
+                                atlas.index = first_run;
+                            }
 
-                        if animation_timer.0.tick(time.delta()).just_finished() {
-                            atlas.index = if atlas.index == last_walk {
-                                first_walk
-                            } else {
-                                atlas.index + 1
-                            };
+                            if animation_timer.0.tick(time.delta()).just_finished() {
+                                atlas.index = if atlas.index == last_run {
+                                    first_run
+                                } else {
+                                    atlas.index + 1
+                                };
+                            }
+                        } else {
+                            let first_walk = animation_indices.walk[0];
+                            let last_walk = animation_indices.walk[1];
+                            if atlas.index < first_walk || atlas.index > last_walk {
+                                atlas.index = first_walk;
+                            }
+
+                            if animation_timer.0.tick(time.delta()).just_finished() {
+                                atlas.index = if atlas.index == last_walk {
+                                    first_walk
+                                } else {
+                                    atlas.index + 1
+                                };
+                            }
                         }
                     } else {
                         let first_jump = animation_indices.jump[0];
@@ -292,22 +327,38 @@ fn player_move(
             }
 
             KeyCode::KeyD => {
-                for (_, jumping, mut transform, animation_indices, mut atlas) in
+                for (_, jumping, mut transform, animation_indices, mut atlas, _) in
                     query_player.iter_mut()
                 {
                     transform.rotation = Quat::from_rotation_y(0.);
                     if !jumping.0 {
-                        let first_walk = animation_indices.walk[0];
-                        let last_walk = animation_indices.walk[1];
-                        if atlas.index < first_walk || atlas.index > last_walk {
-                            atlas.index = first_walk;
-                        }
-                        if animation_timer.0.tick(time.delta()).just_finished() {
-                            atlas.index = if atlas.index == last_walk {
-                                first_walk
-                            } else {
-                                atlas.index + 1
-                            };
+                        if is_running {
+                            let first_run = animation_indices.run[0];
+                            let last_run = animation_indices.run[1];
+                            if atlas.index < first_run || atlas.index > last_run {
+                                atlas.index = first_run;
+                            }
+
+                            if animation_timer.0.tick(time.delta()).just_finished() {
+                                atlas.index = if atlas.index == last_run {
+                                    first_run
+                                } else {
+                                    atlas.index + 1
+                                };
+                            }
+                        } else {
+                            let first_walk = animation_indices.walk[0];
+                            let last_walk = animation_indices.walk[1];
+                            if atlas.index < first_walk || atlas.index > last_walk {
+                                atlas.index = first_walk;
+                            }
+                            if animation_timer.0.tick(time.delta()).just_finished() {
+                                atlas.index = if atlas.index == last_walk {
+                                    first_walk
+                                } else {
+                                    atlas.index + 1
+                                };
+                            }
                         }
                     } else {
                         let first_jump = animation_indices.jump[0];
