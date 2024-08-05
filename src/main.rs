@@ -65,7 +65,7 @@ impl Default for GameBundle {
     fn default() -> Self {
         GameBundle {
             gravity: Gravity(9.8),
-            acceleration: Acceleration(Vec2::new(0.7, 0.7)),
+            acceleration: Acceleration(Vec2::new(0.5, 0.5)),
         }
     }
 }
@@ -74,9 +74,10 @@ impl Default for GameBundle {
 struct Player;
 
 #[derive(Component)]
-struct AnimationIndices {
+struct EddyAnimationIndices {
     walk: Vec<usize>,
     run: Vec<usize>,
+    drunk: Vec<usize>,
     idle: Vec<usize>,
     jump: Vec<usize>,
     attack: Vec<usize>,
@@ -94,14 +95,15 @@ fn setup(
     commands.spawn(Camera2dBundle::default());
 
     let texture_handle: Handle<Image> = assets_server.load("sprite/eddy.png");
-    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::new(80, 130), 6, 10, None, None);
+    let texture_atlas = TextureAtlasLayout::from_grid(UVec2::splat(128), 16, 10, None, None);
     let texture_atlas_handler = layouts.add(texture_atlas);
 
-    let animation_indices = AnimationIndices {
-        idle: vec![0, 6],
-        walk: vec![12, 14],
+    let animation_indices = EddyAnimationIndices {
+        idle: vec![0, 5],
+        drunk: vec![7, 11],
+        walk: vec![33, 39],
         run: vec![17, 23],
-        jump: vec![28, 33],
+        jump: vec![50, 80],
         attack: vec![30, 36],
     };
 
@@ -110,10 +112,7 @@ fn setup(
         Player,
         SpriteBundle {
             texture: texture_handle,
-            sprite: Sprite {
-                custom_size: Some(Vec2::new(160., 200.)),
-                ..default()
-            },
+            transform: Transform::from_scale(Vec3::splat(3.0)),
             ..default()
         },
         TextureAtlas {
@@ -137,7 +136,7 @@ fn setup(
     });
 
     commands.insert_resource(GravityTimer(Timer::from_seconds(
-        0.01,
+        0.05,
         TimerMode::Repeating,
     )));
     commands.insert_resource(JumpTimer(Timer::from_seconds(0.001, TimerMode::Repeating)));
@@ -146,7 +145,7 @@ fn setup(
         TimerMode::Repeating,
     )));
     commands.insert_resource(AnimationTimer(Timer::from_seconds(
-        0.005,
+        0.1,
         TimerMode::Repeating,
     )));
 }
@@ -161,84 +160,140 @@ fn is_not_ended(
     player_health.0 > 0 && enemy_health.0 > 0
 }
 
+fn is_player_not_movimenting(
+    keys: Res<ButtonInput<KeyCode>>,
+    query_player: Query<(&Transform, &Jumping), With<Player>>,
+) -> bool {
+    let (transform, jumping) = query_player.single();
+
+    let is_pressed = keys.is_changed();
+
+    !is_pressed && !jumping.0
+}
+
+fn idle_animation(
+    mut query_player: Query<(&mut TextureAtlas, &EddyAnimationIndices), With<Player>>,
+    mut animation_timer: ResMut<AnimationTimer>,
+    time: Res<Time>,
+) {
+    for (mut atlas, animation_indices) in query_player.iter_mut() {
+        let first_idle = animation_indices.idle[0];
+        let last_idle = animation_indices.idle[1];
+        if animation_timer.0.tick(time.delta()).just_finished() {
+            atlas.index = if atlas.index == last_idle {
+                first_idle
+            } else {
+                atlas.index + 1
+            };
+        }
+    }
+}
+
 fn player_move(
     keys: Res<ButtonInput<KeyCode>>,
     query_game: Query<&Acceleration>,
     mut animation_timer: ResMut<AnimationTimer>,
     time: Res<Time>,
-    mut param_set: ParamSet<(
-        Query<&mut Health, With<Enemy>>,
-        Query<
-            (
-                &mut Xp,
-                &mut Jumping,
-                &mut Transform,
-                &mut AnimationIndices,
-                &mut TextureAtlas,
-            ),
-            With<Player>,
-        >,
-    )>,
+    mut query_player: Query<
+        (
+            &mut Health,
+            &mut Jumping,
+            &mut Transform,
+            &mut EddyAnimationIndices,
+            &mut TextureAtlas,
+        ),
+        With<Player>,
+    >,
 ) {
     let acceleration = query_game.single();
     for key in keys.get_just_pressed() {
+        let (mut health, mut jumping, mut transform, animation_indices, mut atlas) =
+            query_player.single_mut();
+
         match key {
             KeyCode::KeyE => {
-                for mut health in param_set.p0().iter_mut() {
-                    health.0 -= 10;
+                health.0 += 10;
 
-                    println!("Player attacked!");
+                let first_drunk = animation_indices.drunk[0];
+                let last_drunk = animation_indices.drunk[1];
+
+                if animation_timer.0.tick(time.delta()).just_finished() {
+                    atlas.index = if atlas.index == last_drunk {
+                        first_drunk
+                    } else {
+                        atlas.index + 1
+                    };
                 }
+
+                println!("Player attacked!");
             }
 
             KeyCode::KeyW => {
-                for (_, mut jumping, _, _, _) in param_set.p1().iter_mut() {
-                    if !jumping.0 {
-                        jumping.0 = true;
-                    }
+                if !jumping.0 {
+                    jumping.0 = true;
                 }
             }
             _ => {}
         }
-    }
 
-    for key in keys.get_pressed() {
-        match key {
-            KeyCode::KeyA => {
-                for (_, _, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut()
-                {
+        for key in keys.get_pressed() {
+            match key {
+                KeyCode::KeyA => {
                     transform.rotation = Quat::from_rotation_y(3.14);
-                    let first_walk = animation_indices.walk[0];
-                    let last_walk = animation_indices.walk[1];
-                    for i in first_walk..=last_walk {
+                    if !jumping.0 {
+                        let first_walk = animation_indices.walk[0];
+                        let last_walk = animation_indices.walk[1];
                         if animation_timer.0.tick(time.delta()).just_finished() {
-                            atlas.index = i;
+                            atlas.index = if atlas.index == last_walk {
+                                first_walk
+                            } else {
+                                atlas.index + 1
+                            };
+                        }
+                    } else {
+                        let first_jump = animation_indices.jump[0];
+                        let last_jump = animation_indices.jump[1];
+                        if animation_timer.0.tick(time.delta()).just_finished() {
+                            atlas.index = if atlas.index == last_jump {
+                                first_jump
+                            } else {
+                                atlas.index + 1
+                            };
                         }
                     }
                     transform.translation.x -= 10. * acceleration.0.x;
 
                     // Virar personagem para esquerda
-                    println!("Player moved left! {}", transform.translation.x);
                 }
-            }
 
-            KeyCode::KeyD => {
-                for (_, _, mut transform, animation_indices, mut atlas) in param_set.p1().iter_mut()
-                {
+                KeyCode::KeyD => {
                     transform.rotation = Quat::from_rotation_y(0.);
-                    let first_walk = animation_indices.walk[0];
-                    let last_walk = animation_indices.walk[1];
-                    for i in first_walk..=last_walk {
+                    if !jumping.0 {
+                        let first_walk = animation_indices.walk[0];
+                        let last_walk = animation_indices.walk[1];
                         if animation_timer.0.tick(time.delta()).just_finished() {
-                            atlas.index = i;
+                            atlas.index = if atlas.index == last_walk {
+                                first_walk
+                            } else {
+                                atlas.index + 1
+                            };
+                        }
+                    } else {
+                        let first_jump = animation_indices.jump[0];
+                        let last_jump = animation_indices.jump[1];
+                        if animation_timer.0.tick(time.delta()).just_finished() {
+                            atlas.index = if atlas.index == last_jump {
+                                first_jump
+                            } else {
+                                atlas.index + 1
+                            };
                         }
                     }
                     transform.translation.x += 10. * acceleration.0.x;
-                    println!("Player moved right! {}", transform.translation.x);
                 }
-            }
 
-            _ => {}
+                _ => {}
+            }
         }
     }
 }
@@ -246,7 +301,10 @@ fn player_move(
 fn player_jump(
     mut jump_timer: ResMut<JumpTimer>,
     mut animation_timer: ResMut<AnimationTimer>,
-    mut query_player: Query<(&mut Transform, &AnimationIndices, &mut TextureAtlas), With<Player>>,
+    mut query_player: Query<
+        (&mut Transform, &EddyAnimationIndices, &mut TextureAtlas),
+        With<Player>,
+    >,
     time: Res<Time>,
     query_game: Query<&Gravity>,
 ) {
@@ -258,10 +316,12 @@ fn player_jump(
         let last_jump = animation_indices.jump[1];
 
         transform.translation.y += gravity.0 * 30.;
-        for i in first_jump..=last_jump {
-            if animation_timer.0.tick(time.delta()).just_finished() {
-                atlas.index = i;
-            }
+        if animation_timer.0.tick(time.delta()).just_finished() {
+            atlas.index = if atlas.index == last_jump {
+                first_jump
+            } else {
+                atlas.index + 1
+            };
         }
     }
 }
@@ -271,7 +331,7 @@ fn player_jump_back(
         (
             &mut Jumping,
             &mut Transform,
-            &AnimationIndices,
+            &EddyAnimationIndices,
             &mut TextureAtlas,
         ),
         With<Player>,
@@ -279,27 +339,29 @@ fn player_jump_back(
     query_game: Query<&Gravity>,
     time: Res<Time>,
     mut gravity_timer: ResMut<GravityTimer>,
+    mut animation_timer: ResMut<AnimationTimer>,
 ) {
     let (mut jumping, mut transform, aimation_indices, mut atlas) = query_player.single_mut();
     let gravity = query_game.single();
     if gravity_timer.0.tick(time.delta()).just_finished() {
         transform.translation.y -= gravity.0;
 
+        let first_jump = aimation_indices.jump[0];
+        let last_jump = aimation_indices.jump[1];
+        if animation_timer.0.tick(time.delta()).just_finished() {
+            atlas.index = if atlas.index == last_jump {
+                first_jump
+            } else {
+                atlas.index + 1
+            };
+        }
+
         if transform.translation.y <= 0. {
             jumping.0 = false;
             transform.translation.y = 0.;
-            atlas.index = aimation_indices.idle[0];
+            atlas.index = aimation_indices.walk[0];
         }
     }
-}
-
-fn enemy_loop(query_enemy: Query<(&Xp, &Health), With<Enemy>>) {
-    let (xp, health) = query_enemy.single();
-
-    // println!("Enemy XP: {:#?}", xp);
-    // println!("Enemy Health: {:#?}", health);
-
-    // println!("Enemy attacked!");
 }
 
 fn is_player_jumping(query_player: Query<&Jumping, With<Player>>) -> bool {
@@ -336,13 +398,13 @@ fn main() {
             Update,
             (
                 game_acceleration.run_if(is_not_ended),
+                idle_animation.run_if(is_player_not_movimenting),
                 player_move,
                 player_jump_back.run_if(is_player_jumping),
                 player_jump
                     .run_if(is_player_in_floor)
                     .run_if(is_player_jumping),
                 // player_jump.run_if(is_player_in_air),
-                enemy_loop,
             )
                 .run_if(is_not_ended),
         )
