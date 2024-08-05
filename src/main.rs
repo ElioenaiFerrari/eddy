@@ -1,4 +1,7 @@
-use bevy::prelude::*;
+use bevy::{
+    input::common_conditions::{input_just_pressed, input_pressed},
+    prelude::*,
+};
 
 // Character Components
 #[derive(Default, Debug, Component)]
@@ -162,13 +165,14 @@ fn is_not_ended(
 
 fn is_player_not_movimenting(
     keys: Res<ButtonInput<KeyCode>>,
-    query_player: Query<(&Transform, &Jumping), With<Player>>,
+    query_player: Query<&Jumping, With<Player>>,
 ) -> bool {
-    let (transform, jumping) = query_player.single();
+    let jumping = query_player.single();
 
-    let is_pressed = keys.is_changed();
+    let just_pressed = keys.get_just_pressed();
+    let pressed = keys.get_pressed();
 
-    !is_pressed && !jumping.0 && !transform.translation.is_normalized()
+    return just_pressed.len() == 0 && pressed.len() == 0 && !jumping.0;
 }
 
 fn idle_animation(
@@ -429,7 +433,7 @@ fn main() {
             (
                 game_acceleration.run_if(is_not_ended),
                 idle_animation.run_if(is_player_not_movimenting),
-                player_move,
+                player_move.run_if(is_not_ended),
                 player_jump_back.run_if(is_player_jumping),
                 player_jump
                     .run_if(is_player_in_floor)
