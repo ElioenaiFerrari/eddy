@@ -1,6 +1,5 @@
-use bevy::prelude::*;
-
 use crate::prelude::*;
+use bevy::prelude::*;
 
 fn setup(
     mut commands: Commands,
@@ -340,8 +339,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup);
-        app.add_systems(
+        app.add_systems(Startup, setup).add_systems(
             Update,
             (
                 idle_animation.run_if(is_player_not_movimenting),
