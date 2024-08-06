@@ -1622,6 +1622,8 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_kira_audio",
+ "wasm-bindgen",
+ "winapi",
 ]
 
 [[package]]
