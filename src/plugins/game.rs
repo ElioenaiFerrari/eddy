@@ -13,7 +13,7 @@ fn setup(mut commands: Commands, assets_server: Res<AssetServer>) {
     });
 
     commands.insert_resource(GravityTimer(Timer::from_seconds(
-        0.05,
+        0.008,
         TimerMode::Repeating,
     )));
     commands.insert_resource(JumpTimer(Timer::from_seconds(0.001, TimerMode::Repeating)));
@@ -22,7 +22,7 @@ fn setup(mut commands: Commands, assets_server: Res<AssetServer>) {
         TimerMode::Repeating,
     )));
     commands.insert_resource(AnimationTimer(Timer::from_seconds(
-        0.1,
+        0.08,
         TimerMode::Repeating,
     )));
 }

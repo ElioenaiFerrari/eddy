@@ -16,8 +16,9 @@ fn setup(
         drunk: vec![16, 26],
         walk: vec![33, 39],
         run: vec![50, 55],
-        jump: vec![55, 60],
-        attack: vec![30, 36],
+        jump: vec![90, 100],
+        attack: vec![109, 114],
+        special: vec![84, 100],
     };
 
     commands.spawn((
@@ -101,6 +102,19 @@ fn player_move(
                 for (_, mut jumping, _, _, _, _) in query_player.iter_mut() {
                     if !jumping.0 {
                         jumping.0 = true;
+                    }
+                }
+            }
+
+            KeyCode::KeyF => {
+                for (_, jumping, transform, animation_indices, mut atlas, _) in
+                    query_player.iter_mut()
+                {
+                    let first_attack = animation_indices.attack[0];
+                    let last_attack = animation_indices.attack[1];
+
+                    for i in first_attack..last_attack {
+                        atlas.index = i;
                     }
                 }
             }
@@ -261,21 +275,20 @@ fn player_jump(
     time: Res<Time>,
     query_game: Query<&Gravity>,
 ) {
+    println!("Jumping");
     let (mut transform, animation_indices, mut atlas) = query_player.single_mut();
     let gravity = query_game.single();
 
-    if jump_timer.0.tick(time.delta()).just_finished() {
-        let first_jump = animation_indices.jump[0];
-        let last_jump = animation_indices.jump[1];
+    transform.translation.y += gravity.0 * 20.;
+    let first_jump = animation_indices.jump[0];
+    let last_jump = animation_indices.jump[1];
 
-        transform.translation.y += gravity.0 * 30.;
-        if animation_timer.0.tick(time.delta()).just_finished() {
-            atlas.index = if atlas.index == last_jump {
-                first_jump
-            } else {
-                atlas.index + 1
-            };
-        }
+    if animation_timer.0.tick(time.delta()).just_finished() {
+        atlas.index = if atlas.index == last_jump {
+            first_jump
+        } else {
+            atlas.index + 1
+        };
     }
 }
 
@@ -301,13 +314,11 @@ fn player_jump_back(
 
         let first_jump = aimation_indices.jump[0];
         let last_jump = aimation_indices.jump[1];
-        if animation_timer.0.tick(time.delta()).just_finished() {
-            atlas.index = if atlas.index == last_jump {
-                first_jump
-            } else {
-                atlas.index + 1
-            };
-        }
+        atlas.index = if atlas.index == last_jump {
+            first_jump
+        } else {
+            atlas.index + 1
+        };
 
         if transform.translation.y <= 0. {
             jumping.0 = false;

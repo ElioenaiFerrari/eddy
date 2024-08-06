@@ -17,7 +17,7 @@ impl Default for CharacterBundle {
         CharacterBundle {
             xp: Xp(0),
             level: Level(1),
-            name: Username("Player".to_string()),
+            name: Username("Eddy".to_string()),
             health: Health(100),
             jumping: Jumping(false),
             health_potions: HealthPotions(2),

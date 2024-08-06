@@ -17,6 +17,7 @@ pub struct EddyAnimationIndices {
     pub idle: Vec<usize>,
     pub jump: Vec<usize>,
     pub attack: Vec<usize>,
+    pub special: Vec<usize>,
 }
 
 #[derive(Default, Debug, Component)]
