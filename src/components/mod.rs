@@ -18,7 +18,6 @@ pub struct EddyAnimationIndices {
     pub jump: Vec<usize>,
     pub attack: Vec<usize>,
     pub special: Vec<usize>,
-    pub angry: Vec<usize>,
 }
 
 #[derive(Default, Debug, Component)]
@@ -26,6 +25,12 @@ pub struct Xp(pub u32);
 
 #[derive(Default, Debug, Component)]
 pub struct Level(pub u32);
+
+#[derive(Default, Debug, Component)]
+pub struct InSpecialMode(pub bool, pub u16);
+
+#[derive(Default, Debug, Component)]
+pub struct Attack(pub u16);
 
 #[derive(Default, Debug, Component)]
 pub struct Username(pub String);

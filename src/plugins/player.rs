@@ -21,8 +21,7 @@ fn setup(
         run: vec![50, 55],
         jump: vec![90, 94],
         attack: vec![109, 114],
-        special: vec![84, 100],
-        angry: vec![84, 90],
+        special: vec![81, 92],
     };
 
     log::info!("Setting up Player");
@@ -154,24 +153,28 @@ fn player_move(
                         }
 
                         log::info!("Drinking");
-                    } else {
-                        let first_angry = animation_indices.angry[0];
-                        let last_angry = animation_indices.angry[1];
-
-                        if atlas.index < first_angry || atlas.index > last_angry {
-                            atlas.index = first_angry;
-                        }
-
-                        if animation_timer.0.tick(time.delta()).just_finished() {
-                            atlas.index = if atlas.index == last_angry {
-                                first_angry
-                            } else {
-                                atlas.index + 1
-                            };
-                        }
-
-                        log::info!("Angry");
                     }
+                }
+            }
+
+            KeyCode::KeyQ => {
+                for (_, _, _, animation_indices, mut atlas, _) in query_player.iter_mut() {
+                    let first_special = animation_indices.special[0];
+                    let last_special = animation_indices.special[1];
+
+                    if atlas.index < first_special || atlas.index > last_special {
+                        atlas.index = first_special;
+                    }
+
+                    if animation_timer.0.tick(time.delta()).just_finished() {
+                        atlas.index = if atlas.index == last_special {
+                            first_special
+                        } else {
+                            atlas.index + 1
+                        };
+                    }
+
+                    log::info!("Special");
                 }
             }
 
