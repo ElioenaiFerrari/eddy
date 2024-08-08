@@ -18,7 +18,7 @@ fn setup(mut commands: Commands, assets_server: Res<AssetServer>) {
 
     log::info!("Setting up GravityTimer");
     commands.insert_resource(GravityTimer(Timer::from_seconds(
-        0.008,
+        0.005,
         TimerMode::Repeating,
     )));
 

@@ -19,9 +19,10 @@ fn setup(
         drunk: vec![16, 26],
         walk: vec![33, 39],
         run: vec![50, 55],
-        jump: vec![90, 100],
+        jump: vec![90, 94],
         attack: vec![109, 114],
         special: vec![84, 100],
+        angry: vec![84, 90],
     };
 
     log::info!("Setting up Player");
@@ -112,9 +113,7 @@ fn player_move(
             }
 
             KeyCode::KeyF => {
-                for (_, jumping, transform, animation_indices, mut atlas, _) in
-                    query_player.iter_mut()
-                {
+                for (_, _, _, animation_indices, mut atlas, _) in query_player.iter_mut() {
                     let first_attack = animation_indices.attack[0];
                     let last_attack = animation_indices.attack[1];
 
@@ -136,7 +135,7 @@ fn player_move(
                 for (mut health, _, _, animation_indices, mut atlas, mut health_potions) in
                     query_player.iter_mut()
                 {
-                    if health_potions.0 > 0 && health.0 < 100 {
+                    if health.0 < 100 && health_potions.0 > 0 {
                         let first_drunk = animation_indices.drunk[0];
                         let last_drunk = animation_indices.drunk[1];
 
@@ -155,6 +154,23 @@ fn player_move(
                         }
 
                         log::info!("Drinking");
+                    } else {
+                        let first_angry = animation_indices.angry[0];
+                        let last_angry = animation_indices.angry[1];
+
+                        if atlas.index < first_angry || atlas.index > last_angry {
+                            atlas.index = first_angry;
+                        }
+
+                        if animation_timer.0.tick(time.delta()).just_finished() {
+                            atlas.index = if atlas.index == last_angry {
+                                first_angry
+                            } else {
+                                atlas.index + 1
+                            };
+                        }
+
+                        log::info!("Angry");
                     }
                 }
             }
@@ -287,63 +303,62 @@ fn player_move(
 }
 
 fn player_jump(
-    mut animation_timer: ResMut<AnimationTimer>,
-    mut query_player: Query<
-        (&mut Transform, &EddyAnimationIndices, &mut TextureAtlas),
-        With<Player>,
-    >,
-    time: Res<Time>,
-    query_game: Query<&Gravity>,
-) {
-    let (mut transform, animation_indices, mut atlas) = query_player.single_mut();
-    let gravity = query_game.single();
-
-    transform.translation.y += gravity.0 * 20.;
-    let first_jump = animation_indices.jump[0];
-    let last_jump = animation_indices.jump[1];
-
-    if animation_timer.0.tick(time.delta()).just_finished() {
-        atlas.index = if atlas.index == last_jump {
-            first_jump
-        } else {
-            atlas.index + 1
-        };
-    }
-}
-
-fn player_jump_back(
     mut query_player: Query<
         (
-            &mut Jumping,
             &mut Transform,
+            &mut Jumping,
             &EddyAnimationIndices,
             &mut TextureAtlas,
         ),
         With<Player>,
     >,
     query_game: Query<&Gravity>,
-    time: Res<Time>,
-    mut gravity_timer: ResMut<GravityTimer>,
     mut animation_timer: ResMut<AnimationTimer>,
+    time: Res<Time>,
 ) {
-    let (mut jumping, mut transform, aimation_indices, mut atlas) = query_player.single_mut();
+    let (mut transform, mut jumping, animation_indices, mut atlas) = query_player.single_mut();
     let gravity = query_game.single();
-    if gravity_timer.0.tick(time.delta()).just_finished() {
-        transform.translation.y -= gravity.0;
 
-        let first_jump = aimation_indices.jump[0];
-        let last_jump = aimation_indices.jump[1];
-        atlas.index = if atlas.index == last_jump {
-            first_jump
-        } else {
-            atlas.index + 1
-        };
+    if !jumping.0 && transform.translation.y > 0. {
+        transform.translation.y -= gravity.0 * 2.;
+        if animation_timer.0.tick(time.delta()).just_finished() {
+            let first_jump = animation_indices.jump[0];
+            let last_jump = animation_indices.jump[1];
+
+            if atlas.index < first_jump || atlas.index > last_jump {
+                atlas.index = last_jump;
+            }
+
+            atlas.index = if atlas.index == first_jump {
+                last_jump
+            } else {
+                atlas.index - 1
+            };
+        }
 
         if transform.translation.y <= 0. {
-            jumping.0 = false;
             transform.translation.y = 0.;
-            atlas.index = aimation_indices.walk[0];
         }
+    }
+
+    if jumping.0 && transform.translation.y < gravity.0 * 14. {
+        transform.translation.y += gravity.0;
+        if animation_timer.0.tick(time.delta()).just_finished() {
+            let first_jump = animation_indices.jump[0];
+            let last_jump = animation_indices.jump[1];
+
+            if atlas.index < first_jump || atlas.index > last_jump {
+                atlas.index = first_jump;
+            }
+
+            atlas.index = if atlas.index == last_jump {
+                first_jump
+            } else {
+                atlas.index + 1
+            };
+        }
+    } else {
+        jumping.0 = false;
     }
 }
 
@@ -351,18 +366,6 @@ fn is_not_ended(query_player: Query<&Health, With<Player>>) -> bool {
     let player_health = query_player.single();
 
     player_health.0 > 0
-}
-
-fn is_player_jumping(query_player: Query<&Jumping, With<Player>>) -> bool {
-    let jumping = query_player.single();
-
-    jumping.0
-}
-
-fn is_player_in_floor(query_player: Query<&Transform, With<Player>>) -> bool {
-    let transform = query_player.single();
-
-    transform.translation.y == 0.0
 }
 
 pub struct PlayerPlugin;
@@ -375,10 +378,7 @@ impl Plugin for PlayerPlugin {
             (
                 idle_animation.run_if(is_player_not_movimenting),
                 player_move.run_if(is_not_ended),
-                player_jump_back.run_if(is_player_jumping),
-                player_jump
-                    .run_if(is_player_in_floor)
-                    .run_if(is_player_jumping),
+                player_jump,
             ),
         );
     }
