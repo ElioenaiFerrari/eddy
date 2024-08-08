@@ -6,11 +6,14 @@ fn setup(
     assets_server: Res<AssetServer>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
+    log::info!("Setting up CharacterBundle");
     let texture_handle: Handle<Image> = assets_server.load("sprite/eddy.png");
 
+    log::info!("Setting up TextureAtlasLayout");
     let texture_atlas = TextureAtlasLayout::from_grid(UVec2::splat(128), 16, 10, None, None);
     let texture_atlas_handler = layouts.add(texture_atlas);
 
+    log::info!("Setting up EddyAnimationIndices");
     let animation_indices = EddyAnimationIndices {
         idle: vec![0, 5],
         drunk: vec![16, 26],
@@ -21,6 +24,7 @@ fn setup(
         special: vec![84, 100],
     };
 
+    log::info!("Setting up Player");
     commands.spawn((
         CharacterBundle::default(),
         Player,
@@ -102,6 +106,7 @@ fn player_move(
                 for (_, mut jumping, _, _, _, _) in query_player.iter_mut() {
                     if !jumping.0 {
                         jumping.0 = true;
+                        log::info!("Jumping");
                     }
                 }
             }
@@ -116,6 +121,8 @@ fn player_move(
                     for i in first_attack..last_attack {
                         atlas.index = i;
                     }
+
+                    log::info!("Attack");
                 }
             }
 
@@ -129,7 +136,7 @@ fn player_move(
                 for (mut health, _, _, animation_indices, mut atlas, mut health_potions) in
                     query_player.iter_mut()
                 {
-                    if health_potions.0 > 0 {
+                    if health_potions.0 > 0 && health.0 < 100 {
                         let first_drunk = animation_indices.drunk[0];
                         let last_drunk = animation_indices.drunk[1];
 
@@ -146,6 +153,8 @@ fn player_move(
                                 atlas.index + 1
                             };
                         }
+
+                        log::info!("Drinking");
                     }
                 }
             }
@@ -171,6 +180,8 @@ fn player_move(
                                     atlas.index + 1
                                 };
                             }
+
+                            log::info!("Running to left {:?}", transform.translation.x);
                         } else {
                             let first_walk = animation_indices.walk[0];
                             let last_walk = animation_indices.walk[1];
@@ -185,6 +196,8 @@ fn player_move(
                                     atlas.index + 1
                                 };
                             }
+
+                            log::info!("Walking to left {:?}", transform.translation.x);
                         }
                     } else {
                         let first_jump = animation_indices.jump[0];
@@ -201,6 +214,8 @@ fn player_move(
                                 atlas.index + 1
                             };
                         }
+
+                        log::info!("Jumping to left {:?}", transform.translation.x);
                     }
                     transform.translation.x -= 10. * acceleration.0.x;
 
@@ -228,6 +243,8 @@ fn player_move(
                                     atlas.index + 1
                                 };
                             }
+
+                            log::info!("Running to right {:?}", transform.translation.x);
                         } else {
                             let first_walk = animation_indices.walk[0];
                             let last_walk = animation_indices.walk[1];
@@ -241,6 +258,8 @@ fn player_move(
                                     atlas.index + 1
                                 };
                             }
+
+                            log::info!("Walking to right {:?}", transform.translation.x);
                         }
                     } else {
                         let first_jump = animation_indices.jump[0];
@@ -255,6 +274,8 @@ fn player_move(
                                 atlas.index + 1
                             };
                         }
+
+                        log::info!("Jumping to right {:?}", transform.translation.x);
                     }
                     transform.translation.x += 10. * acceleration.0.x;
                 }
@@ -266,7 +287,6 @@ fn player_move(
 }
 
 fn player_jump(
-    mut jump_timer: ResMut<JumpTimer>,
     mut animation_timer: ResMut<AnimationTimer>,
     mut query_player: Query<
         (&mut Transform, &EddyAnimationIndices, &mut TextureAtlas),
@@ -275,7 +295,6 @@ fn player_jump(
     time: Res<Time>,
     query_game: Query<&Gravity>,
 ) {
-    println!("Jumping");
     let (mut transform, animation_indices, mut atlas) = query_player.single_mut();
     let gravity = query_game.single();
 
@@ -350,6 +369,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        log::info!("Building PlayerPlugin");
         app.add_systems(Startup, setup).add_systems(
             Update,
             (

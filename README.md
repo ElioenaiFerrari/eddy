@@ -1,5 +1,9 @@
 # Eddy
 
+<!-- Import my video from videos/basic-movements-test.mov -->
+![Eddy](assets/gif/first-test.gif)
+
+
 ## Introduction
 Meet Eddy, a senior developer who has recently faced a layoff from a top-tier tech giant. Now, Eddy's journey is not just about landing a new job, but also about surviving the challenges that come with it. In this dynamic game, you will help Eddy navigate through phases where he must submit resumes while defending himself from various enemies.
 

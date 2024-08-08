@@ -37,3 +37,6 @@ pub struct Health(pub u16);
 
 #[derive(Default, Debug, Component)]
 pub struct Jumping(pub bool);
+
+#[derive(Debug, Component)]
+pub struct StatusBoard;
