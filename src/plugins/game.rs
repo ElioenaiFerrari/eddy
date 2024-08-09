@@ -33,7 +33,7 @@ fn setup(mut commands: Commands, assets_server: Res<AssetServer>) {
 
     log::info!("Setting up AnimationTimer");
     commands.insert_resource(AnimationTimer(Timer::from_seconds(
-        0.1,
+        0.05,
         TimerMode::Repeating,
     )));
 }
