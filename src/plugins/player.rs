@@ -88,6 +88,7 @@ fn player_move(
             &mut EddyAnimationIndices,
             &mut TextureAtlas,
             &mut HealthPotions,
+            &mut InSpecialMode,
         ),
         With<Player>,
     >,
@@ -103,7 +104,7 @@ fn player_move(
     for key in keys.get_just_pressed() {
         match key {
             KeyCode::KeyW => {
-                for (_, mut jumping, _, _, _, _) in query_player.iter_mut() {
+                for (_, mut jumping, _, _, _, _, _) in query_player.iter_mut() {
                     if !jumping.0 {
                         jumping.0 = true;
                         log::info!("Jumping");
@@ -112,7 +113,7 @@ fn player_move(
             }
 
             KeyCode::KeyF => {
-                for (_, _, _, animation_indices, mut atlas, _) in query_player.iter_mut() {
+                for (_, _, _, animation_indices, mut atlas, _, _) in query_player.iter_mut() {
                     let first_attack = animation_indices.attack[0];
                     let last_attack = animation_indices.attack[1];
 
@@ -131,7 +132,7 @@ fn player_move(
     for key in keys.get_pressed() {
         match key {
             KeyCode::KeyE => {
-                for (mut health, _, _, animation_indices, mut atlas, mut health_potions) in
+                for (mut health, _, _, animation_indices, mut atlas, mut health_potions, _) in
                     query_player.iter_mut()
                 {
                     if health.0 < 100 && health_potions.0 > 0 {
@@ -158,28 +159,34 @@ fn player_move(
             }
 
             KeyCode::KeyQ => {
-                for (_, _, _, animation_indices, mut atlas, _) in query_player.iter_mut() {
-                    let first_special = animation_indices.special[0];
-                    let last_special = animation_indices.special[1];
+                for (_, _, _, animation_indices, mut atlas, _, mut in_special_mode) in
+                    query_player.iter_mut()
+                {
+                    if !in_special_mode.0 {
+                        let first_special = animation_indices.special[0];
+                        let last_special = animation_indices.special[1];
 
-                    if atlas.index < first_special || atlas.index > last_special {
-                        atlas.index = first_special;
+                        if atlas.index < first_special || atlas.index > last_special {
+                            atlas.index = first_special;
+                        }
+
+                        if animation_timer.0.tick(time.delta()).just_finished() {
+                            atlas.index = if atlas.index == last_special {
+                                in_special_mode.0 = true;
+                                in_special_mode.1 = 2;
+                                first_special
+                            } else {
+                                atlas.index + 1
+                            };
+                        }
+
+                        log::info!("Special");
                     }
-
-                    if animation_timer.0.tick(time.delta()).just_finished() {
-                        atlas.index = if atlas.index == last_special {
-                            first_special
-                        } else {
-                            atlas.index + 1
-                        };
-                    }
-
-                    log::info!("Special");
                 }
             }
 
             KeyCode::KeyA => {
-                for (_, jumping, mut transform, animation_indices, mut atlas, _) in
+                for (_, jumping, mut transform, animation_indices, mut atlas, _, _) in
                     query_player.iter_mut()
                 {
                     transform.rotation = Quat::from_rotation_y(3.14);
@@ -243,7 +250,7 @@ fn player_move(
             }
 
             KeyCode::KeyD => {
-                for (_, jumping, mut transform, animation_indices, mut atlas, _) in
+                for (_, jumping, mut transform, animation_indices, mut atlas, _, _) in
                     query_player.iter_mut()
                 {
                     transform.rotation = Quat::from_rotation_y(0.);
